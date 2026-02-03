@@ -6,270 +6,526 @@
     <title>Share Location</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            margin: 0;
-            padding: 20px;
             background: var(--tg-theme-bg-color, #ffffff);
             color: var(--tg-theme-text-color, #000000);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
             min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 400px;
             text-align: center;
         }
-        .container {
-            max-width: 400px;
+        
+        .header {
+            margin-bottom: 30px;
         }
+        
+        .location-icon {
+            font-size: 64px;
+            margin-bottom: 15px;
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
         h1 {
             font-size: 24px;
             margin-bottom: 10px;
+            font-weight: 600;
         }
-        .description {
+        
+        .subtitle {
             color: var(--tg-theme-hint-color, #999999);
-            margin-bottom: 30px;
             font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 30px;
         }
-        .status {
-            padding: 15px;
-            border-radius: 10px;
-            margin: 20px 0;
-            font-size: 16px;
-            min-height: 80px;
+        
+        .status-container {
+            min-height: 120px;
             display: flex;
             flex-direction: column;
-            align-items: center;
             justify-content: center;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 20px;
+            border-radius: 12px;
+            transition: all 0.3s ease;
         }
-        .initial {
+        
+        .status-initial {
             background: #e8f4fd;
             color: #0088cc;
         }
-        .success {
-            background: #d4edda;
-            color: #155724;
-        }
-        .error {
-            background: #f8d7da;
-            color: #721c24;
-        }
-        .loading {
+        
+        .status-loading {
             background: #fff3cd;
             color: #856404;
         }
+        
+        .status-success {
+            background: #d4edda;
+            color: #155724;
+            animation: successPulse 2s ease-in-out;
+        }
+        
+        .status-error {
+            background: #f8d7da;
+            color: #721c24;
+            animation: shake 0.5s ease-in-out;
+        }
+        
+        @keyframes successPulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+        
         .spinner {
-            border: 3px solid #f3f3f3;
+            border: 3px solid rgba(0, 136, 204, 0.2);
             border-top: 3px solid #0088cc;
             border-radius: 50%;
-            width: 30px;
-            height: 30px;
+            width: 40px;
+            height: 40px;
             animation: spin 1s linear infinite;
-            margin: 10px auto;
+            margin-bottom: 15px;
         }
+        
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        button {
+        
+        .status-text {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 5px;
+        }
+        
+        .status-detail {
+            font-size: 14px;
+            opacity: 0.8;
+        }
+        
+        .action-button {
             background: var(--tg-theme-button-color, #0088cc);
             color: var(--tg-theme-button-text-color, #ffffff);
             border: none;
-            padding: 14px 28px;
-            border-radius: 10px;
+            padding: 16px 32px;
+            border-radius: 12px;
             font-size: 16px;
-            cursor: pointer;
-            margin: 10px 0;
-            width: 100%;
             font-weight: 600;
-            transition: opacity 0.2s;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s ease;
+            margin-top: 10px;
+            box-shadow: 0 4px 12px rgba(0, 136, 204, 0.2);
         }
-        button:hover {
+        
+        .action-button:hover {
             opacity: 0.9;
+            transform: translateY(-2px);
+            box-shadow: 0 6px 16px rgba(0, 136, 204, 0.3);
         }
-        button:disabled {
+        
+        .action-button:active {
+            transform: translateY(0);
+        }
+        
+        .action-button:disabled {
             opacity: 0.6;
             cursor: not-allowed;
+            transform: none !important;
         }
-        .location-icon {
-            font-size: 48px;
-            margin: 20px 0;
+        
+        .retry-button {
+            background: transparent;
+            color: #0088cc;
+            border: 1px solid #0088cc;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            margin-top: 15px;
+        }
+        
+        .user-info {
+            margin-top: 20px;
+            padding: 10px;
+            background: var(--tg-theme-secondary-bg-color, #f8f9fa);
+            border-radius: 8px;
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999999);
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        .instructions {
+            margin-top: 20px;
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999999);
+            padding: 10px;
+            background: var(--tg-theme-secondary-bg-color, #f8f9fa);
+            border-radius: 8px;
+        }
+        
+        .close-button {
+            margin-top: 20px;
+            background: #6c757d;
+            padding: 12px 24px;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="location-icon">📍</div>
-        <h1>Share Your Location</h1>
-        <p class="description">Tap the button below to share your current location for job tracking purposes.</p>
-        
-        <div id="status" class="status initial">
-            <p>Ready to share location</p>
+        <div class="header">
+            <div class="location-icon">📍</div>
+            <h1>Share Your Location</h1>
+            <p class="subtitle">Tap the button below to share your current location for job tracking and attendance purposes.</p>
         </div>
         
-        <button id="shareBtn" onclick="getLocation()">
+        <div id="status" class="status-container status-initial">
+            <p class="status-text">Ready to share location</p>
+            <p class="status-detail">Your location will only be shared when you click the button</p>
+        </div>
+        
+        <button id="shareButton" class="action-button" onclick="requestLocation()">
             📍 Share My Location
         </button>
         
-        <div id="userInfo" style="margin-top: 20px; font-size: 12px; color: #666; display: none;">
-            <!-- User info will appear here -->
+        <button id="closeButton" class="action-button close-button hidden" onclick="closeApp()">
+            Close App
+        </button>
+        
+        <div id="userInfo" class="user-info hidden">
+            <!-- Telegram user info will appear here -->
+        </div>
+        
+        <div class="instructions">
+            <p>📍 Make sure location services are enabled on your device</p>
+            <p>📱 Grant location permission when prompted</p>
+            <p>⚡ Your data is sent securely to our system</p>
         </div>
     </div>
 
     <script>
-        // Initialize Telegram Web App
-        let tg = window.Telegram.WebApp;
-        tg.expand(); // Expand to full screen
-        
-        // **REPLACE THIS WITH YOUR N8N WEBHOOK URL**
+        // ===================== CONFIGURATION =====================
         const WEBHOOK_URL = 'https://n8n.la-renting.com/webhook/0b58bdb2-bf32-4b48-8a2a-0539359cb88e';
+        // =========================================================
         
-        // Get user info from Telegram
-        const initData = tg.initDataUnsafe;
-        const telegramUser = initData?.user;
+        // Initialize Telegram Web App
+        const tg = window.Telegram.WebApp;
+        let isProcessing = false;
         
-        // Display user info if available
-        if (telegramUser) {
-            const userInfoDiv = document.getElementById('userInfo');
-            userInfoDiv.style.display = 'block';
-            userInfoDiv.innerHTML = `
-                User ID: ${telegramUser.id}<br>
-                ${telegramUser.first_name} ${telegramUser.last_name || ''}
-            `;
-        } else {
-            console.warn('No Telegram user data available');
+        // Initialize app
+        function initApp() {
+            console.log('🔧 Initializing Telegram Web App');
+            
+            // Expand to full screen
+            tg.expand();
+            
+            // Set app theme
+            tg.setHeaderColor('#0088cc');
+            tg.setBackgroundColor('#ffffff');
+            
+            // Get user data
+            const user = tg.initDataUnsafe?.user;
+            console.log('👤 Telegram User:', user);
+            
+            // Display user info if available
+            if (user) {
+                const userInfo = document.getElementById('userInfo');
+                userInfo.classList.remove('hidden');
+                userInfo.innerHTML = `
+                    <strong>User:</strong> ${user.first_name} ${user.last_name || ''}<br>
+                    <strong>Username:</strong> @${user.username || 'not set'}<br>
+                    <strong>ID:</strong> ${user.id}
+                `;
+            }
+            
+            console.log('✅ App initialized successfully');
         }
         
-        async function getLocation() {
+        // Request location using Telegram's native API
+        async function requestLocation() {
+            if (isProcessing) return;
+            
+            const shareButton = document.getElementById('shareButton');
             const statusDiv = document.getElementById('status');
-            const shareBtn = document.getElementById('shareBtn');
             
-            // Disable button during request
-            shareBtn.disabled = true;
-            shareBtn.innerHTML = 'Getting location...';
+            // Set processing state
+            isProcessing = true;
+            shareButton.disabled = true;
+            shareButton.textContent = 'Getting location...';
             
-            // Update status
-            statusDiv.className = 'status loading';
-            statusDiv.innerHTML = '<div class="spinner"></div><p>Requesting location...</p>';
+            // Update UI
+            statusDiv.className = 'status-container status-loading';
+            statusDiv.innerHTML = `
+                <div class="spinner"></div>
+                <p class="status-text">Requesting location...</p>
+                <p class="status-detail">Please wait while we access your location</p>
+            `;
+            
+            console.log('📍 Starting location request...');
+            
+            try {
+                // Method 1: Try Telegram's native location request first
+                if (tg.requestLocation && typeof tg.requestLocation === 'function') {
+                    console.log('📱 Using Telegram location API');
+                    
+                    tg.requestLocation(
+                        // Success callback
+                        (location) => {
+                            console.log('✅ Telegram location received:', location);
+                            processAndSendLocation(
+                                location.latitude,
+                                location.longitude,
+                                { accuracy: 50, source: 'telegram_api' }
+                            );
+                        },
+                        // Error callback
+                        (error) => {
+                            console.warn('⚠️ Telegram location failed:', error);
+                            // Fallback to browser geolocation
+                            useBrowserGeolocation();
+                        }
+                    );
+                } else {
+                    // Method 2: Use browser geolocation if Telegram API not available
+                    console.log('🌐 Using browser geolocation');
+                    useBrowserGeolocation();
+                }
+            } catch (error) {
+                console.error('❌ Error in requestLocation:', error);
+                useBrowserGeolocation();
+            }
+        }
+        
+        // Fallback to browser geolocation
+        function useBrowserGeolocation() {
+            console.log('🔍 Starting browser geolocation...');
             
             if (!navigator.geolocation) {
-                statusDiv.className = 'status error';
-                statusDiv.innerHTML = '<p>❌ Geolocation is not supported by your device</p>';
-                shareBtn.disabled = false;
-                shareBtn.innerHTML = '📍 Share My Location';
+                showError('Geolocation is not supported by your device/browser.');
                 return;
             }
             
             navigator.geolocation.getCurrentPosition(
-                async (position) => {
-                    statusDiv.innerHTML = '<div class="spinner"></div><p>Sending location...</p>';
-                    
-                    const locationData = {
-                        telegram_user_id: telegramUser?.id || 'unknown',
-                        telegram_username: telegramUser?.username || 'unknown',
-                        telegram_first_name: telegramUser?.first_name || 'unknown',
-                        telegram_last_name: telegramUser?.last_name || '',
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude,
-                        accuracy: Math.round(position.coords.accuracy),
-                        altitude: position.coords.altitude,
-                        altitude_accuracy: position.coords.altitudeAccuracy,
-                        heading: position.coords.heading,
-                        speed: position.coords.speed,
-                        timestamp: new Date(position.timestamp).toISOString(),
-                        received_at: new Date().toISOString(),
-                        source: 'telegram_web_app'
-                    };
-                    
-                    console.log('Sending location data:', locationData);
-                    
-                    try {
-                        // Send to n8n webhook
-                        const response = await fetch(WEBHOOK_URL, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                            },
-                            body: JSON.stringify(locationData)
-                        });
-                        
-                        const responseText = await response.text();
-                        console.log('Response status:', response.status);
-                        console.log('Response text:', responseText);
-                        
-                        if (response.ok) {
-                            statusDiv.className = 'status success';
-                            statusDiv.innerHTML = '<p>✅ Location shared successfully!</p><p>You can close this window.</p>';
-                            shareBtn.style.display = 'none';
-                            
-                            // Close the Mini App after 3 seconds
-                            setTimeout(() => {
-                                tg.close();
-                            }, 3000);
-                        } else {
-                            throw new Error(`Server error: ${response.status} - ${responseText}`);
+                // Success handler
+                (position) => {
+                    console.log('✅ Browser location received:', position.coords);
+                    processAndSendLocation(
+                        position.coords.latitude,
+                        position.coords.longitude,
+                        {
+                            accuracy: position.coords.accuracy,
+                            altitude: position.coords.altitude,
+                            heading: position.coords.heading,
+                            speed: position.coords.speed,
+                            source: 'browser_geolocation'
                         }
-                    } catch (error) {
-                        console.error('Error sending location:', error);
-                        statusDiv.className = 'status error';
-                        statusDiv.innerHTML = `
-                            <p>❌ Failed to send location</p>
-                            <p style="font-size: 12px;">${error.message}</p>
-                            <button onclick="getLocation()" style="margin-top: 10px; padding: 8px 16px; font-size: 14px;">
-                                Try Again
-                            </button>
-                        `;
-                        shareBtn.disabled = false;
-                        shareBtn.innerHTML = '📍 Share My Location';
-                    }
+                    );
                 },
+                // Error handler
                 (error) => {
-                    console.error('Geolocation error:', error);
-                    statusDiv.className = 'status error';
+                    console.error('❌ Browser geolocation error:', error);
                     
-                    let errorMessage = '';
+                    let errorMessage = 'Failed to get location. ';
                     switch(error.code) {
                         case error.PERMISSION_DENIED:
-                            errorMessage = '❌ Location permission denied. Please enable location access in your device settings.';
+                            errorMessage += 'Location permission was denied.';
                             break;
                         case error.POSITION_UNAVAILABLE:
-                            errorMessage = '❌ Location information is unavailable.';
+                            errorMessage += 'Location information is unavailable.';
                             break;
                         case error.TIMEOUT:
-                            errorMessage = '❌ Location request timed out.';
+                            errorMessage += 'Location request timed out.';
                             break;
                         default:
-                            errorMessage = '❌ An unknown error occurred.';
+                            errorMessage += 'An unknown error occurred.';
                     }
                     
-                    statusDiv.innerHTML = `
-                        <p>${errorMessage}</p>
-                        <button onclick="getLocation()" style="margin-top: 10px; padding: 8px 16px; font-size: 14px;">
-                            Try Again
-                        </button>
-                    `;
-                    shareBtn.disabled = false;
-                    shareBtn.innerHTML = '📍 Share My Location';
+                    showError(errorMessage);
                 },
+                // Options
                 {
                     enableHighAccuracy: true,
-                    timeout: 15000, // Increased timeout
-                    maximumAge: 60000 // Accept cached location up to 1 minute old
+                    timeout: 15000,
+                    maximumAge: 0
                 }
             );
         }
         
-        // Initialize the app
-        console.log('Telegram Web App initialized');
-        console.log('User data:', telegramUser);
-        console.log('Init data:', initData);
-        
-        // Show main button only if we have user data
-        if (!telegramUser) {
-            document.getElementById('status').className = 'status error';
-            document.getElementById('status').innerHTML = '<p>❌ Unable to load user data. Please open this app from Telegram.</p>';
-            document.getElementById('shareBtn').style.display = 'none';
+        // Process location and send to webhook
+        async function processAndSendLocation(latitude, longitude, additionalData = {}) {
+            console.log('📤 Processing location for sending...');
+            
+            const statusDiv = document.getElementById('status');
+            const shareButton = document.getElementById('shareButton');
+            
+            // Update UI
+            statusDiv.className = 'status-container status-loading';
+            statusDiv.innerHTML = `
+                <div class="spinner"></div>
+                <p class="status-text">Sending location...</p>
+                <p class="status-detail">Latitude: ${latitude.toFixed(6)}, Longitude: ${longitude.toFixed(6)}</p>
+            `;
+            
+            // Get user data
+            const user = tg.initDataUnsafe?.user;
+            
+            // Prepare data for webhook
+            const locationData = {
+                // Telegram user info
+                telegram_user_id: user?.id || null,
+                telegram_username: user?.username || null,
+                telegram_first_name: user?.first_name || null,
+                telegram_last_name: user?.last_name || null,
+                
+                // Location data
+                latitude: latitude,
+                longitude: longitude,
+                accuracy: additionalData.accuracy || 0,
+                
+                // Additional info
+                timestamp: new Date().toISOString(),
+                app_version: tg.version || 'unknown',
+                platform: tg.platform || 'unknown',
+                source: additionalData.source || 'unknown',
+                
+                // Metadata
+                type: 'location_share',
+                status: 'success'
+            };
+            
+            console.log('📦 Location data prepared:', locationData);
+            
+            try {
+                // Send to webhook
+                console.log('🔄 Sending to webhook:', WEBHOOK_URL);
+                
+                const response = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    body: JSON.stringify(locationData)
+                });
+                
+                const responseText = await response.text();
+                console.log('📥 Webhook response:', response.status, responseText);
+                
+                if (response.ok) {
+                    // Success
+                    showSuccess('Location shared successfully!');
+                    
+                    // Hide share button, show close button
+                    shareButton.classList.add('hidden');
+                    document.getElementById('closeButton').classList.remove('hidden');
+                    
+                    // Auto-close after 3 seconds
+                    setTimeout(() => {
+                        tg.close();
+                    }, 3000);
+                    
+                } else {
+                    // Server error
+                    throw new Error(`Server returned ${response.status}: ${responseText}`);
+                }
+                
+            } catch (error) {
+                console.error('❌ Error sending to webhook:', error);
+                showError(`Failed to send location: ${error.message}`);
+            }
         }
+        
+        // Show success message
+        function showSuccess(message) {
+            isProcessing = false;
+            
+            const statusDiv = document.getElementById('status');
+            const shareButton = document.getElementById('shareButton');
+            
+            statusDiv.className = 'status-container status-success';
+            statusDiv.innerHTML = `
+                <p class="status-text">✅ ${message}</p>
+                <p class="status-detail">You can now close this window</p>
+            `;
+            
+            shareButton.disabled = false;
+            shareButton.textContent = '📍 Share My Location';
+        }
+        
+        // Show error message
+        function showError(message) {
+            isProcessing = false;
+            
+            const statusDiv = document.getElementById('status');
+            const shareButton = document.getElementById('shareButton');
+            
+            statusDiv.className = 'status-container status-error';
+            statusDiv.innerHTML = `
+                <p class="status-text">❌ ${message}</p>
+                <button class="retry-button" onclick="requestLocation()">Try Again</button>
+            `;
+            
+            shareButton.disabled = false;
+            shareButton.textContent = '📍 Share My Location';
+        }
+        
+        // Close the app
+        function closeApp() {
+            tg.close();
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🚀 Page loaded, initializing app...');
+            
+            // Check if running in Telegram Web App
+            if (window.Telegram && window.Telegram.WebApp) {
+                initApp();
+            } else {
+                // Not in Telegram - show error
+                document.getElementById('status').className = 'status-container status-error';
+                document.getElementById('status').innerHTML = `
+                    <p class="status-text">❌ This app only works within Telegram</p>
+                    <p class="status-detail">Please open this link from Telegram messenger</p>
+                `;
+                document.getElementById('shareButton').classList.add('hidden');
+            }
+        });
+        
+        // Error handling for uncaught errors
+        window.addEventListener('error', function(event) {
+            console.error('🔥 Uncaught error:', event.error);
+            showError('An unexpected error occurred. Please try again.');
+        });
     </script>
 </body>
 </html>
