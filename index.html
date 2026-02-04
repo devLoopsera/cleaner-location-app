@@ -31,15 +31,45 @@
             margin-bottom: 10px;
             color: var(--tg-theme-text-color, #000000);
         }
+        .job-info {
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
         .job-badge {
             display: inline-block;
             background: var(--tg-theme-button-color, #0088cc);
             color: var(--tg-theme-button-text-color, #ffffff);
-            padding: 8px 16px;
-            border-radius: 20px;
-            font-size: 14px;
+            padding: 6px 14px;
+            border-radius: 15px;
+            font-size: 13px;
             font-weight: 600;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
+        }
+        .location-type {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 6px 14px;
+            border-radius: 15px;
+            font-size: 13px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+        .location-type.stop {
+            background: #dc3545;
+        }
+        .message-text {
+            font-size: 14px;
+            color: #333;
+            line-height: 1.6;
+            margin-top: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 8px;
+            border-left: 3px solid var(--tg-theme-button-color, #0088cc);
         }
         .gps-notice {
             background: #fff3cd;
@@ -126,7 +156,14 @@
 <body>
     <div class="container">
         <h1>📍 Share Your Location</h1>
-        <div id="jobBadge" class="job-badge" style="display: none;"></div>
+        
+        <div id="jobInfo" class="job-info" style="display: none;">
+            <div>
+                <span id="jobBadge" class="job-badge"></span>
+                <span id="locationType" class="location-type"></span>
+            </div>
+            <div id="messageText" class="message-text"></div>
+        </div>
         
         <div class="gps-notice">
             <strong>⚠️ Before you continue:</strong>
@@ -146,6 +183,8 @@
         let tg;
         let telegramUser;
         let jobId = null;
+        let locationType = null;
+        let messageText = null;
         let debugMode = true;
         let gpsAttempts = 0;
         const MAX_GPS_ATTEMPTS = 2;
@@ -168,6 +207,27 @@
             const statusDiv = document.getElementById('status');
             statusDiv.className = `status ${className}`;
             statusDiv.innerHTML = html;
+        }
+        
+        // Parse start parameter to extract job_id and location_type
+        function parseStartParam(startParam) {
+            if (!startParam) return { jobId: null, locationType: null };
+            
+            // Format: "WA-77_start" or "WA-77_stop"
+            const parts = startParam.split('_');
+            
+            if (parts.length >= 2) {
+                return {
+                    jobId: parts[0],
+                    locationType: parts[1].toLowerCase()
+                };
+            } else {
+                // Fallback: if no underscore, treat entire string as job ID
+                return {
+                    jobId: startParam,
+                    locationType: null
+                };
+            }
         }
         
         // Initialize when DOM is ready
@@ -207,30 +267,61 @@
                     log('⚠ Warning: No user data available');
                 }
                 
-                // Extract job ID from start_param
+                // Extract job ID and location type from start_param
                 const startParam = tg.initDataUnsafe?.start_param;
+                log(`Start param received: "${startParam}"`);
+                
                 if (startParam) {
-                    jobId = startParam;
-                    log(`✓ Job ID found: ${jobId}`);
+                    const parsed = parseStartParam(startParam);
+                    jobId = parsed.jobId;
+                    locationType = parsed.locationType;
                     
-                    // Display job badge
-                    const jobBadge = document.getElementById('jobBadge');
-                    jobBadge.textContent = `Job: ${jobId}`;
-                    jobBadge.style.display = 'inline-block';
+                    log(`✓ Parsed - Job ID: ${jobId}, Location Type: ${locationType}`);
                 } else {
-                    log('⚠ No job ID in start_param');
+                    log('⚠ No start_param found');
+                    
+                    // Fallback: check URL parameters
+                    const urlParams = new URLSearchParams(window.location.search);
+                    jobId = urlParams.get('job_id');
+                    locationType = urlParams.get('location_type');
+                    
+                    if (jobId) {
+                        log(`✓ Fallback - Job ID from URL: ${jobId}`);
+                    }
+                    if (locationType) {
+                        log(`✓ Fallback - Location type from URL: ${locationType}`);
+                    }
                 }
                 
-                // Also check URL parameters as fallback
-                const urlParams = new URLSearchParams(window.location.search);
-                const jobIdFromUrl = urlParams.get('job_id');
-                if (!jobId && jobIdFromUrl) {
-                    jobId = jobIdFromUrl;
-                    log(`✓ Job ID from URL: ${jobId}`);
+                // Try to reconstruct the message text from the Telegram message
+                // The message is in tg.initDataUnsafe (if bot sent it via reply_markup)
+                if (tg.initDataUnsafe?.query_id) {
+                    // Mini App was opened from inline button
+                    log('✓ Opened from inline button');
+                }
+                
+                // Display job info
+                if (jobId || locationType) {
+                    const jobInfoDiv = document.getElementById('jobInfo');
+                    jobInfoDiv.style.display = 'block';
                     
-                    const jobBadge = document.getElementById('jobBadge');
-                    jobBadge.textContent = `Job: ${jobId}`;
-                    jobBadge.style.display = 'inline-block';
+                    if (jobId) {
+                        const jobBadge = document.getElementById('jobBadge');
+                        jobBadge.textContent = `Job: ${jobId}`;
+                    }
+                    
+                    if (locationType) {
+                        const locationTypeElem = document.getElementById('locationType');
+                        locationTypeElem.textContent = locationType.toUpperCase();
+                        locationTypeElem.className = `location-type ${locationType}`;
+                    }
+                    
+                    // Show reconstructed message (you can customize this)
+                    const messageTextElem = document.getElementById('messageText');
+                    if (jobId && locationType) {
+                        messageText = `Please send your ${locationType} time location for job ID: ${jobId}`;
+                        messageTextElem.textContent = messageText;
+                    }
                 }
                 
                 log('=== Starting Location Request ===');
@@ -287,9 +378,11 @@
             
             updateStatus('loading', '<div class="spinner"></div><p>Sending location to server...</p>');
             
-            // Build the payload with job ID
+            // Build the payload with job ID, location type, and message text
             const locationData = {
-                job_id: jobId,  // ← THIS IS THE KEY PART
+                job_id: jobId,
+                location_type: locationType,
+                message_text: messageText,
                 telegram_user_id: telegramUser?.id || null,
                 telegram_username: telegramUser?.username || null,
                 telegram_first_name: telegramUser?.first_name || null,
@@ -329,6 +422,7 @@
                     updateStatus('success', `
                         <p>✅ Location shared successfully!</p>
                         ${jobId ? `<p style="font-size: 14px; margin-top: 10px;">Job: <strong>${jobId}</strong></p>` : ''}
+                        ${locationType ? `<p style="font-size: 14px;">Type: <strong>${locationType.toUpperCase()}</strong></p>` : ''}
                         <p style="font-size: 13px; color: #666; margin-top: 8px;">
                             Lat: ${position.coords.latitude.toFixed(6)}<br>
                             Lon: ${position.coords.longitude.toFixed(6)}
