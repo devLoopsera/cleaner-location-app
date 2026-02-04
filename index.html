@@ -28,8 +28,31 @@
         }
         h1 {
             font-size: 24px;
-            margin-bottom: 20px;
+            margin-bottom: 10px;
             color: var(--tg-theme-text-color, #000000);
+        }
+        .job-badge {
+            display: inline-block;
+            background: var(--tg-theme-button-color, #0088cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        .gps-notice {
+            background: #fff3cd;
+            color: #856404;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 20px;
+            border: 1px solid #ffeeba;
+        }
+        .gps-notice strong {
+            display: block;
+            margin-bottom: 5px;
         }
         .status {
             padding: 20px;
@@ -63,6 +86,11 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        .progress-text {
+            font-size: 13px;
+            color: #666;
+            margin-top: 10px;
+        }
         button {
             background: var(--tg-theme-button-color, #0088cc);
             color: var(--tg-theme-button-text-color, #ffffff);
@@ -73,9 +101,10 @@
             cursor: pointer;
             margin-top: 15px;
             font-weight: 500;
+            transition: opacity 0.2s;
         }
         button:active {
-            opacity: 0.8;
+            opacity: 0.7;
         }
         .debug {
             font-size: 11px;
@@ -89,11 +118,21 @@
             max-height: 200px;
             overflow-y: auto;
         }
+        .debug-line {
+            margin: 2px 0;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>📍 Share Your Location</h1>
+        <div id="jobBadge" class="job-badge" style="display: none;"></div>
+        
+        <div class="gps-notice">
+            <strong>⚠️ Before you continue:</strong>
+            Please make sure your device's GPS/Location is turned ON in settings.
+        </div>
+        
         <div id="status" class="status loading">
             <div class="spinner"></div>
             <p>Initializing...</p>
@@ -106,7 +145,10 @@
         
         let tg;
         let telegramUser;
-        let debugMode = true; // Set to false to hide debug info
+        let jobId = null;
+        let debugMode = true;
+        let gpsAttempts = 0;
+        const MAX_GPS_ATTEMPTS = 2;
         
         function log(message) {
             console.log(message);
@@ -114,7 +156,11 @@
                 const debugDiv = document.getElementById('debug');
                 debugDiv.style.display = 'block';
                 const time = new Date().toLocaleTimeString();
-                debugDiv.innerHTML += `<div>[${time}] ${message}</div>`;
+                const line = document.createElement('div');
+                line.className = 'debug-line';
+                line.textContent = `[${time}] ${message}`;
+                debugDiv.appendChild(line);
+                debugDiv.scrollTop = debugDiv.scrollHeight;
             }
         }
         
@@ -132,7 +178,7 @@
         }
         
         function init() {
-            log('Page loaded, initializing...');
+            log('=== Initialization Started ===');
             
             try {
                 // Check if Telegram WebApp is available
@@ -145,51 +191,88 @@
                 }
                 
                 tg = window.Telegram.WebApp;
-                log('Telegram WebApp found');
+                log('✓ Telegram WebApp found');
                 
                 // Initialize Telegram WebApp
                 tg.ready();
                 tg.expand();
-                log('Telegram WebApp initialized');
+                log('✓ Telegram WebApp initialized');
                 
                 // Get user data
                 telegramUser = tg.initDataUnsafe?.user;
                 
                 if (telegramUser) {
-                    log(`User: ${telegramUser.first_name} (ID: ${telegramUser.id})`);
+                    log(`✓ User: ${telegramUser.first_name} (ID: ${telegramUser.id})`);
                 } else {
-                    log('Warning: No user data available');
+                    log('⚠ Warning: No user data available');
                 }
+                
+                // Extract job ID from start_param
+                const startParam = tg.initDataUnsafe?.start_param;
+                if (startParam) {
+                    jobId = startParam;
+                    log(`✓ Job ID found: ${jobId}`);
+                    
+                    // Display job badge
+                    const jobBadge = document.getElementById('jobBadge');
+                    jobBadge.textContent = `Job: ${jobId}`;
+                    jobBadge.style.display = 'inline-block';
+                } else {
+                    log('⚠ No job ID in start_param');
+                }
+                
+                // Also check URL parameters as fallback
+                const urlParams = new URLSearchParams(window.location.search);
+                const jobIdFromUrl = urlParams.get('job_id');
+                if (!jobId && jobIdFromUrl) {
+                    jobId = jobIdFromUrl;
+                    log(`✓ Job ID from URL: ${jobId}`);
+                    
+                    const jobBadge = document.getElementById('jobBadge');
+                    jobBadge.textContent = `Job: ${jobId}`;
+                    jobBadge.style.display = 'inline-block';
+                }
+                
+                log('=== Starting Location Request ===');
                 
                 // Wait a bit before requesting location
                 setTimeout(() => {
-                    log('Starting location request...');
                     getLocation();
-                }, 300);
+                }, 500);
                 
             } catch (error) {
-                log(`Init error: ${error.message}`);
+                log(`✗ Init error: ${error.message}`);
                 updateStatus('error', `<p>❌ Initialization failed</p><p style="font-size: 14px; margin-top: 10px;">${error.message}</p><button onclick="location.reload()">Reload</button>`);
             }
         }
         
         async function getLocation() {
-            updateStatus('loading', '<div class="spinner"></div><p>Requesting location permission...</p>');
+            gpsAttempts++;
+            
+            updateStatus('loading', `
+                <div class="spinner"></div>
+                <p>Requesting location permission...</p>
+                <div class="progress-text">Attempt ${gpsAttempts} of ${MAX_GPS_ATTEMPTS}</div>
+                <div class="progress-text">This may take up to 30 seconds...</div>
+            `);
             
             // Check if geolocation is supported
             if (!navigator.geolocation) {
-                log('Geolocation not supported');
+                log('✗ Geolocation not supported');
                 updateStatus('error', '<p>❌ Your device doesn\'t support location services</p>');
                 return;
             }
             
-            log('Geolocation API available');
+            log(`Geolocation API available (Attempt ${gpsAttempts})`);
             
+            // First attempt: High accuracy with longer timeout
             const options = {
-                enableHighAccuracy: true,
-                timeout: 20000,
+                enableHighAccuracy: gpsAttempts === 1,  // Only first attempt uses high accuracy
+                timeout: 30000,  // 30 seconds
                 maximumAge: 0
             };
+            
+            log(`GPS Settings: High accuracy=${options.enableHighAccuracy}, Timeout=${options.timeout}ms`);
             
             navigator.geolocation.getCurrentPosition(
                 sendLocation,
@@ -199,12 +282,14 @@
         }
         
         async function sendLocation(position) {
-            log(`Location: ${position.coords.latitude}, ${position.coords.longitude}`);
-            log(`Accuracy: ${Math.round(position.coords.accuracy)}m`);
+            log(`✓ Location obtained: ${position.coords.latitude}, ${position.coords.longitude}`);
+            log(`✓ Accuracy: ${Math.round(position.coords.accuracy)}m`);
             
             updateStatus('loading', '<div class="spinner"></div><p>Sending location to server...</p>');
             
+            // Build the payload with job ID
             const locationData = {
+                job_id: jobId,  // ← THIS IS THE KEY PART
                 telegram_user_id: telegramUser?.id || null,
                 telegram_username: telegramUser?.username || null,
                 telegram_first_name: telegramUser?.first_name || null,
@@ -215,72 +300,121 @@
                 timestamp: new Date().toISOString()
             };
             
-            log(`Sending to: ${WEBHOOK_URL}`);
+            log(`Sending to webhook: ${WEBHOOK_URL}`);
+            log(`Payload: ${JSON.stringify(locationData, null, 2)}`);
             
             try {
                 const response = await fetch(WEBHOOK_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     },
-                    body: JSON.stringify(locationData)
+                    body: JSON.stringify(locationData),
+                    mode: 'cors'
                 });
                 
-                log(`Response status: ${response.status}`);
+                log(`✓ Response: ${response.status} ${response.statusText}`);
                 
                 if (response.ok) {
-                    const result = await response.json();
-                    log(`Success: ${JSON.stringify(result)}`);
+                    let result;
+                    try {
+                        result = await response.json();
+                        log(`✓ Server response: ${JSON.stringify(result)}`);
+                    } catch (e) {
+                        log('✓ Success (no JSON response)');
+                        result = { success: true };
+                    }
                     
-                    updateStatus('success', '<p>✅ Location shared successfully!</p><p style="font-size: 14px; margin-top: 10px;">Closing in 2 seconds...</p>');
+                    updateStatus('success', `
+                        <p>✅ Location shared successfully!</p>
+                        ${jobId ? `<p style="font-size: 14px; margin-top: 10px;">Job: <strong>${jobId}</strong></p>` : ''}
+                        <p style="font-size: 13px; color: #666; margin-top: 8px;">
+                            Lat: ${position.coords.latitude.toFixed(6)}<br>
+                            Lon: ${position.coords.longitude.toFixed(6)}
+                        </p>
+                        <p style="font-size: 12px; color: #999; margin-top: 10px;">Closing in 2 seconds...</p>
+                    `);
                     
                     setTimeout(() => {
+                        log('Closing Mini App...');
                         tg.close();
                     }, 2000);
                 } else {
                     const errorText = await response.text();
-                    log(`Error response: ${errorText}`);
-                    throw new Error(`Server error: ${response.status}`);
+                    log(`✗ Server error: ${response.status} - ${errorText}`);
+                    throw new Error(`Server returned ${response.status}`);
                 }
                 
             } catch (error) {
-                log(`Fetch error: ${error.message}`);
+                log(`✗ Send error: ${error.message}`);
                 updateStatus('error', 
                     `<p>❌ Failed to send location</p>
-                    <p style="font-size: 14px; margin-top: 10px;">${error.message}</p>
+                    <p style="font-size: 13px; margin-top: 10px;">Error: ${error.message}</p>
+                    <p style="font-size: 12px; color: #666; margin-top: 8px;">
+                        Please check your internet connection
+                    </p>
                     <button onclick="getLocation()">Try Again</button>`
                 );
             }
         }
         
         function handleLocationError(error) {
-            log(`Location error: Code ${error.code} - ${error.message}`);
+            log(`✗ Location error: Code ${error.code} - ${error.message}`);
             
             let errorMessage = '';
             let helpText = '';
+            let showRetry = true;
             
             switch(error.code) {
                 case error.PERMISSION_DENIED:
                     errorMessage = 'Location permission denied';
-                    helpText = 'Please enable location access in your browser settings';
+                    helpText = 'Please enable location access in your device settings and reload this page';
+                    showRetry = false;
                     break;
+                    
                 case error.POSITION_UNAVAILABLE:
                     errorMessage = 'Location unavailable';
-                    helpText = 'Unable to retrieve your location. Please try again';
+                    helpText = 'Unable to retrieve your location. Make sure GPS is enabled.';
                     break;
+                    
                 case error.TIMEOUT:
                     errorMessage = 'Location request timed out';
-                    helpText = 'The request took too long. Please try again';
+                    
+                    if (gpsAttempts < MAX_GPS_ATTEMPTS) {
+                        // Try again with lower accuracy
+                        log(`Retrying with lower accuracy settings...`);
+                        helpText = 'GPS signal weak. Retrying with lower accuracy...';
+                        
+                        updateStatus('loading', `
+                            <div class="spinner"></div>
+                            <p>${helpText}</p>
+                            <div class="progress-text">Make sure you're near a window or outside</div>
+                        `);
+                        
+                        setTimeout(() => {
+                            getLocation();
+                        }, 1000);
+                        return;
+                    } else {
+                        helpText = `GPS signal too weak. Please:
+                        <br>• Move closer to a window or go outside
+                        <br>• Make sure GPS is enabled in device settings
+                        <br>• Check if location services are working`;
+                    }
                     break;
+                    
                 default:
-                    errorMessage = 'Unknown error';
-                    helpText = 'An unexpected error occurred';
+                    errorMessage = 'Unknown error occurred';
+                    helpText = error.message || 'Please try again';
             }
+            
+            const retryButton = showRetry ? '<button onclick="gpsAttempts=0; getLocation()">Try Again</button>' : '<button onclick="location.reload()">Reload Page</button>';
             
             updateStatus('error', 
                 `<p>❌ ${errorMessage}</p>
-                <p style="font-size: 14px; margin-top: 10px;">${helpText}</p>
-                <button onclick="getLocation()">Try Again</button>`
+                <p style="font-size: 14px; margin-top: 10px; line-height: 1.6;">${helpText}</p>
+                ${retryButton}`
             );
         }
     </script>
