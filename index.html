@@ -71,6 +71,17 @@
             border-radius: 8px;
             border-left: 3px solid var(--tg-theme-button-color, #0088cc);
         }
+        .webhook-notice {
+            background: #d1ecf1;
+            color: #0c5460;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin: 10px 0;
+            border: 1px solid #bee5eb;
+            text-align: left;
+            word-break: break-all;
+        }
         .gps-notice {
             background: #fff3cd;
             color: #856404;
@@ -165,6 +176,11 @@
             <div id="messageText" class="message-text"></div>
         </div>
         
+        <div id="webhookInfo" class="webhook-notice" style="display: none;">
+            <strong>📤 Waiting for response...</strong>
+            <div id="webhookUrl" style="margin-top: 5px; font-size: 10px;"></div>
+        </div>
+        
         <div class="gps-notice">
             <strong>⚠️ Before you continue:</strong>
             Please make sure your device's GPS/Location is turned ON in settings.
@@ -178,14 +194,14 @@
     </div>
 
     <script>
-        const WEBHOOK_URL = 'https://n8n.la-renting.com/webhook/0b58bdb2-bf32-4b48-8a2a-0539359cb88e';
+        const MAIN_WEBHOOK_URL = 'https://n8n.la-renting.com/webhook/0b58bdb2-bf32-4b48-8a2a-0539359cb88e';
         
         let tg;
         let telegramUser;
         let jobId = null;
         let locationType = null;
         let messageText = null;
-        let resumeWebhookUrl = null;
+        let waitingWebhookUrl = null;
         let debugMode = true;
         let gpsAttempts = 0;
         const MAX_GPS_ATTEMPTS = 2;
@@ -210,25 +226,64 @@
             statusDiv.innerHTML = html;
         }
         
+        // Parse URL parameters for startapp and resume webhook
+        function getUrlParams() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // Check for 'startapp' parameter in URL
+            const startappFromUrl = urlParams.get('startapp');
+            
+            // Check for 'resume' parameter (waiting webhook URL)
+            const resumeFromUrl = urlParams.get('resume');
+            
+            // Also check Telegram's start_param
+            const tgStartParam = tg?.initDataUnsafe?.start_param;
+            
+            return {
+                startParam: startappFromUrl || tgStartParam,
+                resumeUrl: resumeFromUrl ? decodeURIComponent(resumeFromUrl) : null
+            };
+        }
+        
         // Parse start parameter to extract job_id and location_type
         function parseStartParam(startParam) {
             if (!startParam) return { jobId: null, locationType: null };
             
-            // Format: "WA-77_start" or "WA-77_stop"
-            const parts = startParam.split('_');
+            log(`Raw startParam: "${startParam}"`);
             
-            if (parts.length >= 2) {
-                return {
-                    jobId: parts[0],
-                    locationType: parts[1].toLowerCase()
-                };
-            } else {
-                // Fallback: if no underscore, treat entire string as job ID
-                return {
-                    jobId: startParam,
-                    locationType: null
-                };
+            // Handle WA-1-start, WA-1-stop format (with hyphen)
+            if (startParam.includes('-start')) {
+                const jobId = startParam.replace('-start', '');
+                return { jobId, locationType: 'start' };
+            } else if (startParam.includes('-stop')) {
+                const jobId = startParam.replace('-stop', '');
+                return { jobId, locationType: 'stop' };
             }
+            // Handle WA-1_start, WA-1_stop format (with underscore)
+            else if (startParam.includes('_start')) {
+                const jobId = startParam.replace('_start', '');
+                return { jobId, locationType: 'start' };
+            } else if (startParam.includes('_stop')) {
+                const jobId = startParam.replace('_stop', '');
+                return { jobId, locationType: 'stop' };
+            }
+            // Handle WH-10-start, WH-10-stop format
+            else if (startParam.endsWith('-start')) {
+                // Find the last hyphen before "start"
+                const lastHyphenIndex = startParam.lastIndexOf('-', startParam.length - 6);
+                if (lastHyphenIndex > 0) {
+                    const jobId = startParam.substring(0, lastHyphenIndex);
+                    return { jobId, locationType: 'start' };
+                }
+            } else if (startParam.endsWith('-stop')) {
+                const lastHyphenIndex = startParam.lastIndexOf('-', startParam.length - 5);
+                if (lastHyphenIndex > 0) {
+                    const jobId = startParam.substring(0, lastHyphenIndex);
+                    return { jobId, locationType: 'stop' };
+                }
+            }
+            // If no location type found, treat entire string as job ID
+            return { jobId: startParam, locationType: null };
         }
         
         // Initialize when DOM is ready
@@ -268,9 +323,20 @@
                     log('⚠ Warning: No user data available');
                 }
                 
-                // Extract job ID and location type from start_param
-                const startParam = tg.initDataUnsafe?.start_param;
+                // Extract parameters from URL
+                const { startParam, resumeUrl } = getUrlParams();
+                waitingWebhookUrl = resumeUrl;
+                
                 log(`Start param received: "${startParam}"`);
+                if (waitingWebhookUrl) {
+                    log(`Waiting webhook URL found: ${waitingWebhookUrl.substring(0, 50)}...`);
+                    
+                    // Show webhook info
+                    const webhookInfo = document.getElementById('webhookInfo');
+                    webhookInfo.style.display = 'block';
+                    document.getElementById('webhookUrl').textContent = 
+                        waitingWebhookUrl.substring(0, 80) + '...';
+                }
                 
                 if (startParam) {
                     const parsed = parseStartParam(startParam);
@@ -278,41 +344,8 @@
                     locationType = parsed.locationType;
                     
                     log(`✓ Parsed - Job ID: ${jobId}, Location Type: ${locationType}`);
-                } else {
-                    log('⚠ No start_param found');
                     
-                    // Fallback: check URL parameters
-                    const urlParams = new URLSearchParams(window.location.search);
-                    jobId = urlParams.get('job_id');
-                    locationType = urlParams.get('location_type');
-                    
-                    if (jobId) {
-                        log(`✓ Fallback - Job ID from URL: ${jobId}`);
-                    }
-                    if (locationType) {
-                        log(`✓ Fallback - Location type from URL: ${locationType}`);
-                    }
-                }
-                
-                // Extract resume webhook URL from query parameters
-                const urlParams = new URLSearchParams(window.location.search);
-                resumeWebhookUrl = urlParams.get('resume');
-                
-                if (resumeWebhookUrl) {
-                    log(`✓ Resume webhook URL found: ${resumeWebhookUrl}`);
-                } else {
-                    log('⚠ No resume webhook URL provided');
-                }
-                
-                // Try to reconstruct the message text from the Telegram message
-                // The message is in tg.initDataUnsafe (if bot sent it via reply_markup)
-                if (tg.initDataUnsafe?.query_id) {
-                    // Mini App was opened from inline button
-                    log('✓ Opened from inline button');
-                }
-                
-                // Display job info
-                if (jobId || locationType) {
+                    // Display job info
                     const jobInfoDiv = document.getElementById('jobInfo');
                     jobInfoDiv.style.display = 'block';
                     
@@ -325,14 +358,32 @@
                         const locationTypeElem = document.getElementById('locationType');
                         locationTypeElem.textContent = locationType.toUpperCase();
                         locationTypeElem.className = `location-type ${locationType}`;
-                    }
-                    
-                    // Show reconstructed message (you can customize this)
-                    const messageTextElem = document.getElementById('messageText');
-                    if (jobId && locationType) {
+                        
+                        // Create message text
                         messageText = `Please send your ${locationType} time location for job ID: ${jobId}`;
+                        const messageTextElem = document.getElementById('messageText');
                         messageTextElem.textContent = messageText;
                     }
+                } else {
+                    log('⚠ No start_param found');
+                    
+                    // Fallback: check other URL parameters
+                    const urlParams = new URLSearchParams(window.location.search);
+                    jobId = urlParams.get('job_id');
+                    locationType = urlParams.get('location_type');
+                    
+                    if (jobId) {
+                        log(`✓ Fallback - Job ID from URL: ${jobId}`);
+                    }
+                    if (locationType) {
+                        log(`✓ Fallback - Location type from URL: ${locationType}`);
+                    }
+                }
+                
+                // Try to reconstruct the message text from the Telegram message
+                if (tg.initDataUnsafe?.query_id) {
+                    // Mini App was opened from inline button
+                    log('✓ Opened from inline button');
                 }
                 
                 log('=== Starting Location Request ===');
@@ -403,14 +454,16 @@
                 accuracy: position.coords.accuracy,
                 timestamp: new Date().toISOString(),
                 source: 'telegram_mini_app',
-                waiting_webhook_url: resumeWebhookUrl
+                // Add waiting webhook URL to the payload
+                waiting_webhook_url: waitingWebhookUrl || null
             };
             
-            log(`Sending to webhook: ${WEBHOOK_URL}`);
+            log(`Sending to main webhook: ${MAIN_WEBHOOK_URL}`);
             log(`Payload: ${JSON.stringify(locationData, null, 2)}`);
             
             try {
-                const response = await fetch(WEBHOOK_URL, {
+                // 1. Send to main webhook
+                const mainResponse = await fetch(MAIN_WEBHOOK_URL, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -420,46 +473,58 @@
                     mode: 'cors'
                 });
                 
-                log(`✓ Response: ${response.status} ${response.statusText}`);
+                log(`✓ Main webhook response: ${mainResponse.status} ${mainResponse.statusText}`);
                 
-                if (response.ok) {
+                // 2. If we have a waiting webhook URL, call it to resume the waiting workflow
+                if (waitingWebhookUrl) {
+                    log(`Calling waiting webhook: ${waitingWebhookUrl.substring(0, 50)}...`);
+                    
+                    const resumeData = {
+                        status: 'completed',
+                        location_received: true,
+                        success: true,
+                        ...locationData
+                    };
+                    
+                    try {
+                        const resumeResponse = await fetch(waitingWebhookUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
+                            },
+                            body: JSON.stringify(resumeData),
+                            mode: 'cors'
+                        });
+                        
+                        log(`✓ Waiting webhook response: ${resumeResponse.status} ${resumeResponse.statusText}`);
+                        
+                        if (!resumeResponse.ok) {
+                            log(`⚠ Waiting webhook returned ${resumeResponse.status}`);
+                        }
+                    } catch (resumeError) {
+                        log(`⚠ Waiting webhook error: ${resumeError.message}`);
+                        // Don't fail the whole process if waiting webhook fails
+                    }
+                } else {
+                    log('ℹ No waiting webhook URL provided');
+                }
+                
+                if (mainResponse.ok) {
                     let result;
                     try {
-                        result = await response.json();
+                        result = await mainResponse.json();
                         log(`✓ Server response: ${JSON.stringify(result)}`);
                     } catch (e) {
                         log('✓ Success (no JSON response)');
                         result = { success: true };
                     }
                     
-                    // If we have a resume webhook URL, call it to resume the waiting workflow
-                    if (resumeWebhookUrl) {
-                        log(`Calling resume webhook: ${resumeWebhookUrl}`);
-                        try {
-                            const resumeResponse = await fetch(resumeWebhookUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
-                                body: JSON.stringify({
-                                    success: true,
-                                    job_id: jobId,
-                                    location_type: locationType,
-                                    latitude: position.coords.latitude,
-                                    longitude: position.coords.longitude
-                                })
-                            });
-                            log(`✓ Resume webhook called: ${resumeResponse.status}`);
-                        } catch (resumeError) {
-                            log(`⚠ Resume webhook error (non-critical): ${resumeError.message}`);
-                            // Don't fail the whole process if resume webhook fails
-                        }
-                    }
-                    
                     updateStatus('success', `
                         <p>✅ Location shared successfully!</p>
                         ${jobId ? `<p style="font-size: 14px; margin-top: 10px;">Job: <strong>${jobId}</strong></p>` : ''}
                         ${locationType ? `<p style="font-size: 14px;">Type: <strong>${locationType.toUpperCase()}</strong></p>` : ''}
+                        ${waitingWebhookUrl ? `<p style="font-size: 12px; color: #666; margin-top: 5px;">✓ Waiting workflow resumed</p>` : ''}
                         <p style="font-size: 13px; color: #666; margin-top: 8px;">
                             Lat: ${position.coords.latitude.toFixed(6)}<br>
                             Lon: ${position.coords.longitude.toFixed(6)}
@@ -472,13 +537,50 @@
                         tg.close();
                     }, 2000);
                 } else {
-                    const errorText = await response.text();
-                    log(`✗ Server error: ${response.status} - ${errorText}`);
-                    throw new Error(`Server returned ${response.status}`);
+                    const errorText = await mainResponse.text();
+                    log(`✗ Main webhook error: ${mainResponse.status} - ${errorText}`);
+                    
+                    // Even if main webhook fails, try to call waiting webhook with error status
+                    if (waitingWebhookUrl) {
+                        try {
+                            await fetch(waitingWebhookUrl, {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({
+                                    status: 'failed',
+                                    location_received: false,
+                                    error: `Main webhook returned ${mainResponse.status}`,
+                                    error_details: errorText
+                                })
+                            });
+                        } catch (e) {
+                            // Ignore waiting webhook errors
+                        }
+                    }
+                    
+                    throw new Error(`Server returned ${mainResponse.status}`);
                 }
                 
             } catch (error) {
                 log(`✗ Send error: ${error.message}`);
+                
+                // Try to call waiting webhook even on error
+                if (waitingWebhookUrl) {
+                    try {
+                        await fetch(waitingWebhookUrl, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                status: 'failed',
+                                location_received: false,
+                                error: error.message
+                            })
+                        });
+                    } catch (e) {
+                        // Ignore waiting webhook errors
+                    }
+                }
+                
                 updateStatus('error', 
                     `<p>❌ Failed to send location</p>
                     <p style="font-size: 13px; margin-top: 10px;">Error: ${error.message}</p>
@@ -548,6 +650,29 @@
                 ${retryButton}`
             );
         }
+        
+        // Test the parser function
+        function testParser() {
+            const testCases = [
+                'WA-1-start',
+                'WA-1-stop',
+                'WA-77_start',
+                'WA-77_stop',
+                'WH-10-start',
+                'WH-10-stop',
+                'WA-77',
+                'WH-10'
+            ];
+            
+            log('=== Testing Parser ===');
+            testCases.forEach(testCase => {
+                const result = parseStartParam(testCase);
+                log(`"${testCase}" → Job: "${result.jobId}", Type: "${result.locationType}"`);
+            });
+        }
+        
+        // Uncomment to test parser on load
+        // testParser();
     </script>
 </body>
 </html>
