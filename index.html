@@ -201,7 +201,7 @@
         let jobId = null;
         let locationType = null;
         let messageText = null;
-        let resumeWebhookUrl = null;
+        let waitingWebhookUrl = null;
         let debugMode = true;
         let gpsAttempts = 0;
         const MAX_GPS_ATTEMPTS = 2;
@@ -325,17 +325,17 @@
                 
                 // Extract parameters from URL
                 const { startParam, resumeUrl } = getUrlParams();
-                resumeWebhookUrl = resumeUrl;
+                waitingWebhookUrl = resumeUrl;
                 
                 log(`Start param received: "${startParam}"`);
-                if (resumeWebhookUrl) {
-                    log(`Resume webhook URL found: ${resumeWebhookUrl.substring(0, 50)}...`);
+                if (waitingWebhookUrl) {
+                    log(`Waiting webhook URL found: ${waitingWebhookUrl.substring(0, 50)}...`);
                     
                     // Show webhook info
                     const webhookInfo = document.getElementById('webhookInfo');
                     webhookInfo.style.display = 'block';
                     document.getElementById('webhookUrl').textContent = 
-                        resumeWebhookUrl.substring(0, 80) + '...';
+                        waitingWebhookUrl.substring(0, 80) + '...';
                 }
                 
                 if (startParam) {
@@ -453,7 +453,9 @@
                 longitude: position.coords.longitude,
                 accuracy: position.coords.accuracy,
                 timestamp: new Date().toISOString(),
-                source: 'telegram_mini_app'
+                source: 'telegram_mini_app',
+                // Add waiting webhook URL to the payload
+                waiting_webhook_url: waitingWebhookUrl || null
             };
             
             log(`Sending to main webhook: ${MAIN_WEBHOOK_URL}`);
@@ -473,9 +475,9 @@
                 
                 log(`✓ Main webhook response: ${mainResponse.status} ${mainResponse.statusText}`);
                 
-                // 2. If we have a resume webhook URL, call it to resume the waiting workflow
-                if (resumeWebhookUrl) {
-                    log(`Calling resume webhook: ${resumeWebhookUrl.substring(0, 50)}...`);
+                // 2. If we have a waiting webhook URL, call it to resume the waiting workflow
+                if (waitingWebhookUrl) {
+                    log(`Calling waiting webhook: ${waitingWebhookUrl.substring(0, 50)}...`);
                     
                     const resumeData = {
                         status: 'completed',
@@ -485,7 +487,7 @@
                     };
                     
                     try {
-                        const resumeResponse = await fetch(resumeWebhookUrl, {
+                        const resumeResponse = await fetch(waitingWebhookUrl, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -495,17 +497,17 @@
                             mode: 'cors'
                         });
                         
-                        log(`✓ Resume webhook response: ${resumeResponse.status} ${resumeResponse.statusText}`);
+                        log(`✓ Waiting webhook response: ${resumeResponse.status} ${resumeResponse.statusText}`);
                         
                         if (!resumeResponse.ok) {
-                            log(`⚠ Resume webhook returned ${resumeResponse.status}`);
+                            log(`⚠ Waiting webhook returned ${resumeResponse.status}`);
                         }
                     } catch (resumeError) {
-                        log(`⚠ Resume webhook error: ${resumeError.message}`);
-                        // Don't fail the whole process if resume webhook fails
+                        log(`⚠ Waiting webhook error: ${resumeError.message}`);
+                        // Don't fail the whole process if waiting webhook fails
                     }
                 } else {
-                    log('ℹ No resume webhook URL provided');
+                    log('ℹ No waiting webhook URL provided');
                 }
                 
                 if (mainResponse.ok) {
@@ -522,7 +524,7 @@
                         <p>✅ Location shared successfully!</p>
                         ${jobId ? `<p style="font-size: 14px; margin-top: 10px;">Job: <strong>${jobId}</strong></p>` : ''}
                         ${locationType ? `<p style="font-size: 14px;">Type: <strong>${locationType.toUpperCase()}</strong></p>` : ''}
-                        ${resumeWebhookUrl ? `<p style="font-size: 12px; color: #666; margin-top: 5px;">✓ Workflow resumed</p>` : ''}
+                        ${waitingWebhookUrl ? `<p style="font-size: 12px; color: #666; margin-top: 5px;">✓ Waiting workflow resumed</p>` : ''}
                         <p style="font-size: 13px; color: #666; margin-top: 8px;">
                             Lat: ${position.coords.latitude.toFixed(6)}<br>
                             Lon: ${position.coords.longitude.toFixed(6)}
@@ -538,10 +540,10 @@
                     const errorText = await mainResponse.text();
                     log(`✗ Main webhook error: ${mainResponse.status} - ${errorText}`);
                     
-                    // Even if main webhook fails, try to call resume webhook with error status
-                    if (resumeWebhookUrl) {
+                    // Even if main webhook fails, try to call waiting webhook with error status
+                    if (waitingWebhookUrl) {
                         try {
-                            await fetch(resumeWebhookUrl, {
+                            await fetch(waitingWebhookUrl, {
                                 method: 'POST',
                                 headers: {'Content-Type': 'application/json'},
                                 body: JSON.stringify({
@@ -552,7 +554,7 @@
                                 })
                             });
                         } catch (e) {
-                            // Ignore resume webhook errors
+                            // Ignore waiting webhook errors
                         }
                     }
                     
@@ -562,10 +564,10 @@
             } catch (error) {
                 log(`✗ Send error: ${error.message}`);
                 
-                // Try to call resume webhook even on error
-                if (resumeWebhookUrl) {
+                // Try to call waiting webhook even on error
+                if (waitingWebhookUrl) {
                     try {
-                        await fetch(resumeWebhookUrl, {
+                        await fetch(waitingWebhookUrl, {
                             method: 'POST',
                             headers: {'Content-Type': 'application/json'},
                             body: JSON.stringify({
@@ -575,7 +577,7 @@
                             })
                         });
                     } catch (e) {
-                        // Ignore resume webhook errors
+                        // Ignore waiting webhook errors
                     }
                 }
                 
