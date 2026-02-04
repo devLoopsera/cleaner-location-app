@@ -213,21 +213,41 @@
         function parseStartParam(startParam) {
             if (!startParam) return { jobId: null, locationType: null };
             
-            // Format: "WA-77_start" or "WA-77_stop"
-            const parts = startParam.split('_');
+            log(`Raw startParam: "${startParam}"`);
             
-            if (parts.length >= 2) {
-                return {
-                    jobId: parts[0],
-                    locationType: parts[1].toLowerCase()
-                };
-            } else {
-                // Fallback: if no underscore, treat entire string as job ID
-                return {
-                    jobId: startParam,
-                    locationType: null
-                };
+            // Handle WA-1-start, WA-1-stop format (with hyphen)
+            if (startParam.includes('-start')) {
+                const jobId = startParam.replace('-start', '');
+                return { jobId, locationType: 'start' };
+            } else if (startParam.includes('-stop')) {
+                const jobId = startParam.replace('-stop', '');
+                return { jobId, locationType: 'stop' };
             }
+            // Handle WA-1_start, WA-1_stop format (with underscore)
+            else if (startParam.includes('_start')) {
+                const jobId = startParam.replace('_start', '');
+                return { jobId, locationType: 'start' };
+            } else if (startParam.includes('_stop')) {
+                const jobId = startParam.replace('_stop', '');
+                return { jobId, locationType: 'stop' };
+            }
+            // Handle WH-10-start, WH-10-stop format
+            else if (startParam.endsWith('-start')) {
+                // Find the last hyphen before "start"
+                const lastHyphenIndex = startParam.lastIndexOf('-', startParam.length - 6);
+                if (lastHyphenIndex > 0) {
+                    const jobId = startParam.substring(0, lastHyphenIndex);
+                    return { jobId, locationType: 'start' };
+                }
+            } else if (startParam.endsWith('-stop')) {
+                const lastHyphenIndex = startParam.lastIndexOf('-', startParam.length - 5);
+                if (lastHyphenIndex > 0) {
+                    const jobId = startParam.substring(0, lastHyphenIndex);
+                    return { jobId, locationType: 'stop' };
+                }
+            }
+            // If no location type found, treat entire string as job ID
+            return { jobId: startParam, locationType: null };
         }
         
         // Initialize when DOM is ready
@@ -277,6 +297,26 @@
                     locationType = parsed.locationType;
                     
                     log(`✓ Parsed - Job ID: ${jobId}, Location Type: ${locationType}`);
+                    
+                    // Display job info
+                    const jobInfoDiv = document.getElementById('jobInfo');
+                    jobInfoDiv.style.display = 'block';
+                    
+                    if (jobId) {
+                        const jobBadge = document.getElementById('jobBadge');
+                        jobBadge.textContent = `Job: ${jobId}`;
+                    }
+                    
+                    if (locationType) {
+                        const locationTypeElem = document.getElementById('locationType');
+                        locationTypeElem.textContent = locationType.toUpperCase();
+                        locationTypeElem.className = `location-type ${locationType}`;
+                        
+                        // Create message text
+                        messageText = `Please send your ${locationType} time location for job ID: ${jobId}`;
+                        const messageTextElem = document.getElementById('messageText');
+                        messageTextElem.textContent = messageText;
+                    }
                 } else {
                     log('⚠ No start_param found');
                     
@@ -294,34 +334,9 @@
                 }
                 
                 // Try to reconstruct the message text from the Telegram message
-                // The message is in tg.initDataUnsafe (if bot sent it via reply_markup)
                 if (tg.initDataUnsafe?.query_id) {
                     // Mini App was opened from inline button
                     log('✓ Opened from inline button');
-                }
-                
-                // Display job info
-                if (jobId || locationType) {
-                    const jobInfoDiv = document.getElementById('jobInfo');
-                    jobInfoDiv.style.display = 'block';
-                    
-                    if (jobId) {
-                        const jobBadge = document.getElementById('jobBadge');
-                        jobBadge.textContent = `Job: ${jobId}`;
-                    }
-                    
-                    if (locationType) {
-                        const locationTypeElem = document.getElementById('locationType');
-                        locationTypeElem.textContent = locationType.toUpperCase();
-                        locationTypeElem.className = `location-type ${locationType}`;
-                    }
-                    
-                    // Show reconstructed message (you can customize this)
-                    const messageTextElem = document.getElementById('messageText');
-                    if (jobId && locationType) {
-                        messageText = `Please send your ${locationType} time location for job ID: ${jobId}`;
-                        messageTextElem.textContent = messageText;
-                    }
                 }
                 
                 log('=== Starting Location Request ===');
@@ -511,6 +526,29 @@
                 ${retryButton}`
             );
         }
+        
+        // Test the parser function
+        function testParser() {
+            const testCases = [
+                'WA-1-start',
+                'WA-1-stop',
+                'WA-77_start',
+                'WA-77_stop',
+                'WH-10-start',
+                'WH-10-stop',
+                'WA-77',
+                'WH-10'
+            ];
+            
+            log('=== Testing Parser ===');
+            testCases.forEach(testCase => {
+                const result = parseStartParam(testCase);
+                log(`"${testCase}" → Job: "${result.jobId}", Type: "${result.locationType}"`);
+            });
+        }
+        
+        // Uncomment to test parser on load
+        // testParser();
     </script>
 </body>
 </html>
