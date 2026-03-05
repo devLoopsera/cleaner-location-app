@@ -22,10 +22,7 @@
             padding: 40px 20px;
             max-width: 400px;
         }
-        h1 {
-            font-size: 24px;
-            margin-bottom: 20px;
-        }
+        h1 { font-size: 24px; margin-bottom: 20px; }
         .spinner {
             border: 4px solid #f3f3f3;
             border-top: 4px solid var(--tg-theme-button-color, #0088cc);
@@ -35,19 +32,9 @@
             animation: spin 1s linear infinite;
             margin: 30px auto;
         }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .status-text {
-            font-size: 16px;
-            color: var(--tg-theme-hint-color, #999);
-            margin-top: 20px;
-        }
-        .icon {
-            font-size: 60px;
-            margin-bottom: 20px;
-        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .status-text { font-size: 16px; color: var(--tg-theme-hint-color, #999); margin-top: 20px; }
+        .icon { font-size: 60px; margin-bottom: 20px; }
     </style>
 </head>
 <body>
@@ -57,12 +44,10 @@
             <div class="spinner"></div>
             <p class="status-text" id="loadingText">Please wait</p>
         </div>
-
         <div id="success" style="display: none;">
             <div class="icon">✅</div>
             <h1 id="successTitle">Location Shared!</h1>
         </div>
-
         <div id="error" style="display: none;">
             <div class="icon" id="errorIcon">❌</div>
             <h1 id="errorTitle">Error</h1>
@@ -72,14 +57,51 @@
     <script>
         const MAIN_WEBHOOK_URL = 'https://n8n.la-renting.com/webhook/0b58bdb2-bf32-4b48-8a2a-0539359cb88e';
 
-        let tg = window.Telegram.WebApp;
+        const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
 
         const telegramUser = tg.initDataUnsafe?.user;
         const urlParams = new URLSearchParams(window.location.search);
-        const language = urlParams.get('lang') || 'en';
 
+        // --- Parse startapp param FIRST (lang is encoded inside it) ---
+        function getUrlParams() {
+            const startappFromUrl = urlParams.get('startapp');
+            const resumeFromUrl = urlParams.get('resume');
+            const tgStartParam = tg.initDataUnsafe?.start_param;
+            return {
+                startParam: startappFromUrl || tgStartParam,
+                resumeUrl: resumeFromUrl ? decodeURIComponent(resumeFromUrl) : null
+            };
+        }
+
+        function parseStartParam(startParam) {
+            if (!startParam) return { jobId: null, locationType: null, lang: null };
+
+            // New format: "WA-1-start-de", "WH-10-stop-ru" — lang encoded at end
+            const langMatch = startParam.match(/-(start|stop)-([a-z]{2})$/);
+            if (langMatch) {
+                const locationType = langMatch[1];
+                const lang = langMatch[2];
+                const jobId = startParam.slice(0, startParam.length - `-${locationType}-${lang}`.length);
+                return { jobId, locationType, lang };
+            }
+            // Legacy format: "WA-1-start", "WA-1_start"
+            if (startParam.includes('-start')) return { jobId: startParam.replace('-start', ''), locationType: 'start', lang: null };
+            if (startParam.includes('-stop'))  return { jobId: startParam.replace('-stop',  ''), locationType: 'stop',  lang: null };
+            if (startParam.includes('_start')) return { jobId: startParam.replace('_start', ''), locationType: 'start', lang: null };
+            if (startParam.includes('_stop'))  return { jobId: startParam.replace('_stop',  ''), locationType: 'stop',  lang: null };
+            return { jobId: startParam, locationType: null, lang: null };
+        }
+
+        const { startParam, resumeUrl } = getUrlParams();
+        const waitingWebhookUrl = resumeUrl;
+        const { jobId, locationType, lang: startParamLang } = parseStartParam(startParam) || {};
+
+        // Lang priority: startParam (reliable) > URL param (fallback) > default
+        const language = startParamLang || urlParams.get('lang') || 'en';
+
+        // --- Translations ---
         const translations = {
             en: {
                 requesting: '📍 Requesting location...',
@@ -134,7 +156,7 @@
                     PERMISSION_DENIED: 'Доступ до геолокації заборонено',
                     POSITION_UNAVAILABLE: 'Місцезнаходження недоступне',
                     TIMEOUT: 'Час запиту вичерпано',
-                    NETWORK_ERROR: 'Помилка з\'єднання'
+                    NETWORK_ERROR: "Помилка з'єднання"
                 }
             },
             ro: {
@@ -159,29 +181,6 @@
         document.getElementById('loadingText').textContent = t.pleaseWait;
         document.getElementById('successTitle').textContent = t.successTitle;
         document.getElementById('errorTitle').textContent = t.errorTitle;
-
-        function getUrlParams() {
-            const startappFromUrl = urlParams.get('startapp');
-            const resumeFromUrl = urlParams.get('resume');
-            const tgStartParam = tg.initDataUnsafe?.start_param;
-            return {
-                startParam: startappFromUrl || tgStartParam,
-                resumeUrl: resumeFromUrl ? decodeURIComponent(resumeFromUrl) : null
-            };
-        }
-
-        function parseStartParam(startParam) {
-            if (!startParam) return { jobId: null, locationType: null };
-            if (startParam.includes('-start')) return { jobId: startParam.replace('-start', ''), locationType: 'start' };
-            if (startParam.includes('-stop')) return { jobId: startParam.replace('-stop', ''), locationType: 'stop' };
-            if (startParam.includes('_start')) return { jobId: startParam.replace('_start', ''), locationType: 'start' };
-            if (startParam.includes('_stop')) return { jobId: startParam.replace('_stop', ''), locationType: 'stop' };
-            return { jobId: startParam, locationType: null };
-        }
-
-        const { startParam, resumeUrl } = getUrlParams();
-        const waitingWebhookUrl = resumeUrl;
-        const { jobId, locationType } = parseStartParam(startParam) || {};
 
         let gpsAttempts = 0;
         const MAX_GPS_ATTEMPTS = 2;
@@ -209,9 +208,7 @@
         async function getLocation() {
             gpsAttempts++;
             document.getElementById('loadingTitle').textContent = gpsAttempts > 1 ? t.retrying : t.requesting;
-
             if (!navigator.geolocation) { showError('POSITION_UNAVAILABLE'); return; }
-
             navigator.geolocation.getCurrentPosition(
                 sendLocation,
                 handleLocationError,
@@ -221,7 +218,6 @@
 
         async function sendLocation(position) {
             document.getElementById('loadingTitle').textContent = t.sending;
-
             const locationData = {
                 job_id: jobId,
                 location_type: locationType,
@@ -236,7 +232,6 @@
                 source: 'telegram_mini_app',
                 waiting_webhook_url: waitingWebhookUrl || null
             };
-
             try {
                 const response = await fetch(MAIN_WEBHOOK_URL, {
                     method: 'POST',
@@ -244,7 +239,6 @@
                     body: JSON.stringify(locationData),
                     mode: 'cors'
                 });
-
                 if (waitingWebhookUrl) {
                     fetch(waitingWebhookUrl, {
                         method: 'POST',
@@ -252,12 +246,7 @@
                         body: JSON.stringify({ status: 'completed', location_received: true, success: true, ...locationData })
                     }).catch(() => {});
                 }
-
-                if (response.ok) {
-                    showSuccess();
-                } else {
-                    throw new Error(`Server returned ${response.status}`);
-                }
+                if (response.ok) { showSuccess(); } else { throw new Error(`Server returned ${response.status}`); }
             } catch (error) {
                 if (waitingWebhookUrl) {
                     fetch(waitingWebhookUrl, {
@@ -273,13 +262,11 @@
         function handleLocationError(error) {
             const codeMap = { 1: 'PERMISSION_DENIED', 2: 'POSITION_UNAVAILABLE', 3: 'TIMEOUT' };
             const errorCode = codeMap[error.code] || 'POSITION_UNAVAILABLE';
-
             if (error.code === 3 && gpsAttempts < MAX_GPS_ATTEMPTS) {
                 document.getElementById('loadingTitle').textContent = t.retrying;
                 setTimeout(() => getLocation(), 1000);
                 return;
             }
-
             if (waitingWebhookUrl) {
                 fetch(waitingWebhookUrl, {
                     method: 'POST',
@@ -287,7 +274,6 @@
                     body: JSON.stringify({ status: 'failed', location_received: false, error: errorCode })
                 }).catch(() => {});
             }
-
             showError(errorCode);
         }
 
